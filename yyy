@@ -1,0 +1,241 @@
+<template>
+  <div class="survey">
+    <!-- Summary Page -->
+    <div v-if="!isSurveyStarted" class="summary-page">
+      <h1>Survey Summary</h1>
+      <p>This is an overview of the survey. Click the button below to begin.</p>
+      <button @click="startSurvey">Start Survey</button>
+    </div>
+    
+    <!-- Question Page -->
+    <div v-else class="question-page">
+      <!-- Use the computed activeQuestion to show the currently selected question -->
+      <div v-if="activeQuestion" class="question-item">
+        <p class="question-header">
+          {{ activeQuestion.QuestionCode }} - {{ activeQuestion.QuestionText }}
+        </p>
+        <!-- SSELCT: Radio button group -->
+        <div v-if="activeQuestion.QuestionTypeCode === 'SSELCT'">
+          <div
+            v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
+            :key="option.SurveyAnswerId"
+            class="option-item"
+          >
+            <label>
+              <input
+                type="radio"
+                :name="`question-${activeQuestion.SurveyQuestionID}`"
+                :value="option.SurveyAnswerId"
+                v-model="responses[activeQuestion.SurveyQuestionID]"
+                @change="handleRadioChange(activeQuestion.SurveyQuestionID, option.SurveyAnswerId)"
+              />
+              {{ getAnswerText(option.SurveyAnswerId) }}
+            </label>
+          </div>
+        </div>
+        <!-- FTEXT: Free-text input -->
+        <div v-else-if="activeQuestion.QuestionTypeCode === 'FTEXT'">
+          <textarea
+            :placeholder="'Type your answer here...'"
+            v-model="responses[activeQuestion.SurveyQuestionID]"
+          ></textarea>
+        </div>
+        <!-- MSelect: Checkbox group -->
+        <div v-else-if="activeQuestion.QuestionTypeCode === 'MSelect'">
+          <div
+            v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
+            :key="option.SurveyAnswerId"
+            class="option-item"
+          >
+            <label>
+              <input
+                type="checkbox"
+                :value="option.SurveyAnswerId"
+                v-model="responses[activeQuestion.SurveyQuestionID]"
+              />
+              {{ getAnswerText(option.SurveyAnswerId) }}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Buttons -->
+      <div class="navigation-buttons">
+        <button v-if="currentQuestionIndex > 0" @click="prevQuestion">Previous</button>
+        <button v-if="hasNextQuestion" @click="nextQuestion">Next</button>
+        <button v-else @click="finishSurvey">Finish Survey</button>
+      </div>
+    </div>
+    
+    <!-- Debug: Display current responses -->
+    <pre>{{ responses }}</pre>
+  </div>
+</template>
+
+<script>
+import { defineComponent } from 'vue';
+import { useSurveyStore } from '@/store/survey';
+
+export default defineComponent({
+  name: 'SurveyQuestions',
+  data() {
+    return {
+      responses: {}, // Stores user responses keyed by SurveyQuestionID.
+      isSurveyStarted: false,
+      currentQuestionIndex: -1 // When not started, index remains -1.
+    };
+  },
+  computed: {
+    // Retrieve and sort all questions from the store.
+    sortedQuestions() {
+      const questions = this.surveyStore.template.Questions || [];
+      return questions.slice().sort((a, b) => a.QuestionOrderNumber - b.QuestionOrderNumber);
+    },
+    // Compute the current active question based on the index.
+    activeQuestion() {
+      return this.sortedQuestions[this.currentQuestionIndex] || null;
+    },
+    // Determine if there is a next visible question available.
+    hasNextQuestion() {
+      let idx = this.currentQuestionIndex + 1;
+      while (idx < this.sortedQuestions.length) {
+        if (this.shouldDisplayQuestion(this.sortedQuestions[idx])) {
+          return true;
+        }
+        idx++;
+      }
+      return false;
+    }
+  },
+  created() {
+    this.surveyStore = useSurveyStore();
+    
+    // Initialize responses for each question using SurveyQuestionID.
+    this.sortedQuestions.forEach((question) => {
+      if (question.QuestionTypeCode === 'MSelect') {
+        this.responses[question.SurveyQuestionID] = [];
+      } else if (question.QuestionTypeCode === 'SSELCT') {
+        this.responses[question.SurveyQuestionID] = null;
+      } else {
+        this.responses[question.SurveyQuestionID] = '';
+      }
+    });
+  },
+  watch: {
+    responses: {
+      handler(newResponses) {
+        this.surveyStore.updateResponses(newResponses);
+        // Optionally reset answers for hidden questions if needed.
+        // this.resetHiddenResponses();
+      },
+      deep: true
+    }
+  },
+  methods: {
+    // Begins the survey by showing the first visible question.
+    startSurvey() {
+      this.isSurveyStarted = true;
+      this.currentQuestionIndex = this.findNextVisibleQuestion(-1, 1);
+    },
+    // Finds the next visible question from a starting index.
+    findNextVisibleQuestion(startIndex, step) {
+      let newIndex = startIndex + step;
+      while (
+        newIndex >= 0 &&
+        newIndex < this.sortedQuestions.length &&
+        !this.shouldDisplayQuestion(this.sortedQuestions[newIndex])
+      ) {
+        newIndex += step;
+      }
+      return newIndex;
+    },
+    // Goes to the next visible question.
+    nextQuestion() {
+      const newIndex = this.findNextVisibleQuestion(this.currentQuestionIndex, 1);
+      if (newIndex < this.sortedQuestions.length) {
+        this.currentQuestionIndex = newIndex;
+      } else {
+        this.finishSurvey();
+      }
+    },
+    // Goes to the previous visible question.
+    prevQuestion() {
+      const newIndex = this.findNextVisibleQuestion(this.currentQuestionIndex, -1);
+      if (newIndex >= 0) {
+        this.currentQuestionIndex = newIndex;
+      }
+    },
+    // Called when the survey is finished.
+    finishSurvey() {
+      console.log("Survey finished. Final responses:", this.responses);
+      // Here you could navigate to a "Thank You" page or perform further processing.
+    },
+    // Sort answers according to AnswerOrderId.
+    sortedAnswers(answers) {
+      if (!answers) return [];
+      return answers.slice().sort((a, b) => a.AnswerOrderId - b.AnswerOrderId);
+    },
+    // Retrieves AnswerText from global answers in the store.
+    getAnswerText(answerId) {
+      const answerObj = this.surveyStore.template.answers.find(ans => ans.SurveyAnswerId === answerId);
+      return answerObj ? answerObj.AnswerText : '';
+    },
+    // Check if a question should be displayed (based on dependency conditions).
+    shouldDisplayQuestion(question) {
+      if (!question.IsConditionalQuestion) {
+        return true;
+      }
+      if (question.ConditionalQuestions && question.ConditionalQuestions.length) {
+        return question.ConditionalQuestions.every((condition) => {
+          // Retrieve the parent's response using SurveyConditionalQuestionId.
+          const parentResponse = this.responses[condition.SurveyConditionalQuestionId];
+          if (Array.isArray(parentResponse)) {
+            return parentResponse.includes(Number(condition.SurveyAnswerId));
+          } else {
+            return String(parentResponse) === String(condition.SurveyAnswerId);
+          }
+        });
+      }
+      return false;
+    },
+    // Optional: Log changes when a radio button changes.
+    handleRadioChange(questionId, answerId) {
+      console.log(`Question ${questionId} updated to answer ${answerId}`);
+    }
+  }
+});
+</script>
+
+<style scoped>
+.survey {
+  margin: 20px;
+}
+.summary-page {
+  text-align: center;
+}
+.question-page {
+  /* You can add transitions or animations when moving between questions. */
+}
+.question-item {
+  margin-bottom: 20px;
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+.question-header {
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.option-item {
+  margin-bottom: 5px;
+}
+.navigation-buttons {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+}
+textarea {
+  width: 100%;
+  height: 80px;
+}
+</style>
+
