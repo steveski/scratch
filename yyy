@@ -1,105 +1,162 @@
 <template>
-  <div class="survey">
-    <!-- Summary Page -->
-    <div v-if="!isSurveyStarted" class="summary-page">
-      <h1>Survey Summary</h1>
-      <p>This is an overview of the survey. Click the button below to begin.</p>
-      <button @click="startSurvey">Start Survey</button>
-    </div>
-    
-    <!-- Question Page -->
-    <div v-else class="question-page">
-      <!-- Use the computed activeQuestion to show the currently selected question -->
-      <div v-if="activeQuestion" class="question-item">
-        <p class="question-header">
-          {{ activeQuestion.QuestionCode }} - {{ activeQuestion.QuestionText }}
-        </p>
-        <!-- SSELCT: Radio button group -->
-        <div v-if="activeQuestion.QuestionTypeCode === 'SSELCT'">
-          <div
-            v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
-            :key="option.SurveyAnswerId"
-            class="option-item"
-          >
-            <label>
-              <input
-                type="radio"
-                :name="`question-${activeQuestion.SurveyQuestionID}`"
-                :value="option.SurveyAnswerId"
-                v-model="responses[activeQuestion.SurveyQuestionID]"
-                @change="handleRadioChange(activeQuestion.SurveyQuestionID, option.SurveyAnswerId)"
-              />
-              {{ getAnswerText(option.SurveyAnswerId) }}
-            </label>
+    <div>
+      <MintHero
+        breadcrumb-no-current
+        class="page-hero search"
+        :title="store.surveyName"
+      >
+          <!-- asdafasdf -->
+      </MintHero>
+      <div class="container pt-4 main-panel">
+        <div class="survey">
+          
+          <!-- Summary page -->
+          <div v-if="!isSurveyStarted" class="summary">
+            <h2>About this survey</h2>
+            <p>{{ store.description }}</p>
+            <p>
+              The information you provide in this survey will be used to assist the improvement of apprenticeship
+              programs. Your input is valuable to us
+            </p>
+            <button @click="startSurvey">Start Survey</button>
           </div>
-        </div>
-        <!-- FTEXT: Free-text input -->
-        <div v-else-if="activeQuestion.QuestionTypeCode === 'FTEXT'">
-          <textarea
-            :placeholder="'Type your answer here...'"
-            v-model="responses[activeQuestion.SurveyQuestionID]"
-          ></textarea>
-        </div>
-        <!-- MSelect: Checkbox group -->
-        <div v-else-if="activeQuestion.QuestionTypeCode === 'MSelect'">
-          <div
-            v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
-            :key="option.SurveyAnswerId"
-            class="option-item"
-          >
-            <label>
-              <input
-                type="checkbox"
-                :value="option.SurveyAnswerId"
-                v-model="responses[activeQuestion.SurveyQuestionID]"
-              />
-              {{ getAnswerText(option.SurveyAnswerId) }}
-            </label>
+
+          <!-- Question page -->
+          <!-- <template v-else v-for="question in sortedQuestions" :key="question.SurveyQuestionID"> -->
+          <div v-else class="question-page">
+            <!-- Use the computed activeQUestion to show the currently selected question -->
+            <div  v-if="activeQuestion" class="question-item">
+
+              <!-- Display question code and text -->
+              <p class="question-header">
+                {{  activeQuestion.QuestionCode }} - {{ activeQuestion.QuestionText }}
+              </p>
+
+              <!-- SSELCT: display radio button group -->
+              <div v-if="activeQuestion.QuestionTypeCode === 'SSELCT'">
+                <div
+                  v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
+                  :key="option.SurveyAnswerId"
+                  class="option-item"
+                >
+                  <label>
+                    <input
+                      type="radio"
+                      :name="`question-${activeQuestion.SurveyQuestionID}`"
+                      :value="option.SurveyAnswerId"
+                      v-model="responses[activeQuestion.SurveyQuestionID]"
+                      @change="handleRadioChange(activeQuestion.SurveyQuestionID, option.SurveyAnswerId)"
+                    />
+                    {{ getAnswerText(option.SurveyAnswerId) }}
+                  </label>
+                </div>
+              </div>
+
+              <!-- FTEXT: display textarea for free-text response -->
+              <div v-else-if="activeQuestion.QuestionTypeCode === 'FTEXT'">
+                <textarea
+                  :placeholder="'Type your answer here...'"
+                  v-model="responses[activeQuestion.SurveyQuestionID]"
+                  ></textarea>
+              </div>
+
+              <!-- MSELCT: display textarea for free-text response -->
+              <div v-else-if="activeQuestion.QuestionTypeCode === 'MSELCT'">
+                <div
+                  v-for="option in sortedAnswers(activeQuestion.SurveyAnswers)"
+                  :key="option.SurveyAnswerId"
+                  class="option-item"
+                >
+                  <label>
+                    <input
+                      type="checkbox"
+                      :value="option.AnswerId"
+                      v-model="responses[activeQuestion.SurveyQuestionID]"
+                    />
+                    {{ getAnswerText(option.SurveyAnswerId) }}
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="navigation-buttons">
+              <button v-if="currentQuestionIndex > 0" @click="prevQuestion">Previous</button>
+              <button v-if="hasNextQuestion" @click="nextQuestion">Next</button>
+              <button v-else @click="finishSurvey">Finish Survey</button>
+            </div>
+
           </div>
+          <!-- Debug: Display current responses -->
+           <pre>{{ responses }}</pre>
         </div>
+
+        <!-- {{ store.template }} -->
       </div>
 
-      <!-- Navigation Buttons -->
-      <div class="navigation-buttons">
-        <button v-if="currentQuestionIndex > 0" @click="prevQuestion">Previous</button>
-        <button v-if="hasNextQuestion" @click="nextQuestion">Next</button>
-        <button v-else @click="finishSurvey">Finish Survey</button>
-      </div>
     </div>
-    
-    <!-- Debug: Display current responses -->
-    <pre>{{ responses }}</pre>
-  </div>
 </template>
 
-<script>
-import { defineComponent } from 'vue';
-import { useSurveyStore } from '@/store/survey';
+<script lang="ts">
+import { defineComponent, PropType } from "vue";
+import {
+  MintCard, MintFieldset, MintRadio, MintButton, MintLink,
+  MintLoadingSuspense, MintMarkdownRenderer
+} from "@gov-au/mint-ui";
+//import {  } from "@/models/adms-survey.type";
+import { useAdmsSurveyStore } from "@/stores/adms-survey.store";
+import { storeToRefs } from "pinia";
 
 export default defineComponent({
-  name: 'SurveyQuestions',
+  components: {
+    MintCard,
+    MintFieldset,
+    MintRadio,
+    MintButton,
+    MintLink,
+    MintLoadingSuspense,
+    MintMarkdownRenderer,
+  },
   data() {
+    const store = useAdmsSurveyStore();
+
     return {
-      responses: {}, // Stores user responses keyed by SurveyQuestionID.
+      store,
       isSurveyStarted: false,
-      currentQuestionIndex: -1 // When not started, index remains -1.
+      currentQuestionIndex: -1,
+      responses: {}, // Stores user responses keyed by SurveyQuestionID
+      updatingResponses: false, // Guard flag to avoid infinite recursion
     };
   },
+  async mounted() {
+    const recipientExternalId = this.$route.params.recipientExternalId;
+    await this.store.fetchRecipientSurvey(recipientExternalId);
+  },
+  created() {
+    this.sortedQuestions.forEach((question) => {
+      if(this.responses[question.SurveyQuestionID] === undefined) {
+        if(question.QuestionTypeCode === 'MSELCT') {
+          this.responses[question.SurveyQuestionID] = [];
+        } else if(question.QuestionTypeCode === 'SSELCT') {
+          this.responses[question.SurveyQuestionID] = null;
+        } else {
+          this.responses[question.SurveyQuestionID] = '';
+        }
+      }
+    });
+  },
   computed: {
-    // Retrieve and sort all questions from the store.
+    // Sorts the questions correctly
     sortedQuestions() {
-      const questions = this.surveyStore.template.Questions || [];
+      const questions = this.store.template?.questions || [];
       return questions.slice().sort((a, b) => a.QuestionOrderNumber - b.QuestionOrderNumber);
     },
-    // Compute the current active question based on the index.
     activeQuestion() {
       return this.sortedQuestions[this.currentQuestionIndex] || null;
     },
-    // Determine if there is a next visible question available.
     hasNextQuestion() {
-      let idx = this.currentQuestionIndex + 1;
-      while (idx < this.sortedQuestions.length) {
-        if (this.shouldDisplayQuestion(this.sortedQuestions[idx])) {
+      let idx = this.currentQuestionIndex++;
+      while(idx < this.sortedQuestions.length) {
+        if(this.shouldDisplayQuestion(this.sortedQuestions[idx])) {
           return true;
         }
         idx++;
@@ -107,135 +164,121 @@ export default defineComponent({
       return false;
     }
   },
-  created() {
-    this.surveyStore = useSurveyStore();
-    
-    // Initialize responses for each question using SurveyQuestionID.
-    this.sortedQuestions.forEach((question) => {
-      if (question.QuestionTypeCode === 'MSelect') {
-        this.responses[question.SurveyQuestionID] = [];
-      } else if (question.QuestionTypeCode === 'SSELCT') {
-        this.responses[question.SurveyQuestionID] = null;
-      } else {
-        this.responses[question.SurveyQuestionID] = '';
-      }
-    });
-  },
   watch: {
     responses: {
       handler(newResponses) {
-        this.surveyStore.updateResponses(newResponses);
-        // Optionally reset answers for hidden questions if needed.
-        // this.resetHiddenResponses();
+        if(this.updatingResponses) return;
+        this.updatingResponses = true;
+        this.store.updateResponses(newResponses);
+        this.updatingResponses = false;
+        //this.resetHiddenResponses();
       },
       deep: true
     }
   },
   methods: {
-    // Begins the survey by showing the first visible question.
     startSurvey() {
       this.isSurveyStarted = true;
       this.currentQuestionIndex = this.findNextVisibleQuestion(-1, 1);
     },
-    // Finds the next visible question from a starting index.
     findNextVisibleQuestion(startIndex, step) {
       let newIndex = startIndex + step;
-      while (
-        newIndex >= 0 &&
-        newIndex < this.sortedQuestions.length &&
-        !this.shouldDisplayQuestion(this.sortedQuestions[newIndex])
-      ) {
-        newIndex += step;
+      while(newIndex >= 0 &&
+            newIndex < this.sortedQuestions.length &&
+            !this.shouldDisplayQuestion(this.sortedQuestions[newIndex])
+          ) {
+              newIndex += step;
       }
+
       return newIndex;
     },
-    // Goes to the next visible question.
     nextQuestion() {
       const newIndex = this.findNextVisibleQuestion(this.currentQuestionIndex, 1);
-      if (newIndex < this.sortedQuestions.length) {
+      if(newIndex < this.sortedQuestions.length) {
         this.currentQuestionIndex = newIndex;
       } else {
         this.finishSurvey();
       }
     },
-    // Goes to the previous visible question.
     prevQuestion() {
       const newIndex = this.findNextVisibleQuestion(this.currentQuestionIndex, -1);
-      if (newIndex >= 0) {
+      if(newIndex >= 0) {
         this.currentQuestionIndex = newIndex;
       }
     },
-    // Called when the survey is finished.
-    finishSurvey() {
-      console.log("Survey finished. Final responses:", this.responses);
-      // Here you could navigate to a "Thank You" page or perform further processing.
+    async finishSurvey() {
+      console.log("Survey Finished");
+
+      const recipientExternalId = this.$route.params.recipientExternalId;
+      await this.store.submitResponses(recipientExternalId);
     },
-    // Sort answers according to AnswerOrderId.
     sortedAnswers(answers) {
-      if (!answers) return [];
-      return answers.slice().sort((a, b) => a.AnswerOrderId - b.AnswerOrderId);
+      if(!answers) return [];
+      return answers.slice().sort((a, b) => a.AnswerOrderNumber - b.AnswerOrderNumber)
     },
-    // Retrieves AnswerText from global answers in the store.
     getAnswerText(answerId) {
-      const answerObj = this.surveyStore.template.answers.find(ans => ans.SurveyAnswerId === answerId);
+      const answerObj = this.store.template?.answers?.find(ans => ans.SurveyAnswerId === answerId);
       return answerObj ? answerObj.AnswerText : '';
     },
-    // Check if a question should be displayed (based on dependency conditions).
+    // Optional, here for debugging
+    handleRadioChange(questionId, answerId) {
+      console.log(`Question ${questionId} updated to answer ${answerId}`);
+    },
     shouldDisplayQuestion(question) {
-      if (!question.IsConditionalQuestion) {
+      if(!question.IsConditionalQuestion) {
         return true;
       }
-      if (question.ConditionalQuestions && question.ConditionalQuestions.length) {
+
+      if(question.ConditionalQuestions && question.ConditionalQuestions.length) {
         return question.ConditionalQuestions.every((condition) => {
-          // Retrieve the parent's response using SurveyConditionalQuestionId.
+// console.log('Condition (', question.SurveyQuestionID, '): ', condition);
           const parentResponse = this.responses[condition.SurveyConditionalQuestionId];
-          if (Array.isArray(parentResponse)) {
+
+          // For radio / text responsnes, compare directly
+          // For multi-select check if the condition's SurveyAnswerId is included
+          if(Array.isArray(parentResponse)) {
             return parentResponse.includes(Number(condition.SurveyAnswerId));
           } else {
             return String(parentResponse) === String(condition.SurveyAnswerId);
           }
         });
+
       }
+
+      // If no conditions are provided then default to not displaying
       return false;
     },
-    // Optional: Log changes when a radio button changes.
-    handleRadioChange(questionId, answerId) {
-      console.log(`Question ${questionId} updated to answer ${answerId}`);
-    }
-  }
+
+    // If user answers a conditional question, but then alters the parent question that 
+    // hides the dependent one then the selected answers that are now hidden should be reset.
+    // resetHiddenResponses() {
+    //   let updated = false;
+
+    //   // Create a new copy of the responses;
+    //   const newResponses = { ... this.responses };
+
+    //   this.sortedQuestions.forEach((question) => {
+    //     if(!this.shouldDisplayQuestion(question)) {
+    //       const key = question.SurveyQuestionID;
+
+    //       if(question.QuestionTypeCode === 'SSELCT' && newResponses[key] !== null) {
+    //         newResponses[key] = null;
+    //         updated = true;
+    //       } else if(question.QuestionTypeCode === 'FTEXT' && newResponses[key] !== '') {
+    //         newResponses[key] = '';
+    //         updated = true;
+    //       } else if(question.QuestionTypeCode === 'MSELCT' && Array.isArray(newResponses[key]) && newResponses[key].length > 0) {
+    //         newResponses[key] = [];
+    //         updated = true;
+    //       }
+    //     }
+    //   });
+
+    //   if(updated) {
+    //     this.responses = newResponses;
+    //   }
+
+    // },
+  },
 });
 </script>
-
-<style scoped>
-.survey {
-  margin: 20px;
-}
-.summary-page {
-  text-align: center;
-}
-.question-page {
-  /* You can add transitions or animations when moving between questions. */
-}
-.question-item {
-  margin-bottom: 20px;
-  padding: 10px;
-  border: 1px solid #ddd;
-}
-.question-header {
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-.option-item {
-  margin-bottom: 5px;
-}
-.navigation-buttons {
-  margin-top: 20px;
-  display: flex;
-  justify-content: space-between;
-}
-textarea {
-  width: 100%;
-  height: 80px;
-}
-</style>
-
